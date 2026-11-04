@@ -8,6 +8,9 @@ A web-based 3D watch configurator built with **React**, **Vite**, **Three.js** a
 - **Download image** saves a high-resolution PNG of the current view
 - Minimal, premium UI: side panel on desktop, bottom sheet on mobile
 - Every build gets a shareable URL (e.g. `/?case=gold&dial=onyx&strap=metal`)
+- **Record 360° video:** a smooth 6-second turntable of the current configuration (1080p where supported), saved as MP4 or WebM
+- **Export all variants:** every case × dial × strap combination as named PNGs in one ZIP, with progress and Cancel
+- **Banner generator:** enter a name, tagline and price, add a logo, and get 1:1, 4:5, 9:16 and 16:9 banners as a ZIP
 - **Bring your own model:** visitors can drop any watch `.glb` into the page. Parts are detected automatically and can be checked and corrected, with no code changes. See [below](#bring-your-own-model-in-the-browser).
 - Shows your watch model (`public/models/watch.glb`). A built-in placeholder made from basic shapes is used when no model is set.
 
@@ -62,7 +65,16 @@ watch-configurator/
     │   ├── Watch.jsx           Picks the uploaded model, your demo GLB or the placeholder
     │   ├── PlaceholderWatch.jsx  The built-in watch made of basic shapes
     │   ├── GLBWatch.jsx        Loads your GLB and connects its parts by name
-    │   └── ConfigPanel.jsx     The side panel UI
+    │   ├── ConfigPanel.jsx     The side panel UI (Configure tab)
+    │   ├── ExportSection.jsx   "Record 360° video" and "Export all variants" controls
+    │   ├── BannerPanel.jsx     The Banners tab (form, previews, ZIP)
+    │   ├── PanelTabs.jsx       Configure | Banners switch
+    │   └── JobOverlay.jsx      Progress + Cancel for long exports
+    ├── export/                 Everything that produces files
+    │   ├── capture.js          Shared: export sizing/framing, backdrop, crop, download
+    │   ├── turntable.js        360° video (WebCodecs, MediaRecorder fallback)
+    │   ├── batch.js            All-variants PNG export into a streamed ZIP
+    │   └── banners.js          Banner layouts and typography for each ratio
     ├── byom/                   "Bring your own model" (in-browser uploads)
     │   ├── analyze.js          Orientation + part detection (names + geometry), merge warnings
     │   ├── loadModel.js        Reads and parses the file in the browser (loaded on demand)
@@ -105,6 +117,47 @@ Anyone can try their own watch without touching the code:
 Uploaded models don't animate their hands: hands are found by shape, but not which is which. Generated textures (leather grain, links, sunburst) are also only used on the placeholder, because they depend on its UVs. Draco- and meshopt-compressed files are supported, and the Draco decoder is bundled. KTX2 textures aren't supported.
 
 **The demo watch** is whatever `MODEL_URL` in `src/config/model.js` points to; currently your `watch.glb`. Set it to `null` to make the procedural placeholder the demo instead.
+
+## Video, variants and banners
+
+### Record 360° video
+**Configure → Export → Record 360° video** makes a 6-second, constant-speed turn of the watch, starting from the angle you're looking from, so the clip loops seamlessly.
+
+- **Smooth on any device:** each of the 180 frames (30 fps) is rendered at an exact angle and encoded with the browser's WebCodecs encoder, so the result doesn't depend on how fast the device is. The progress bar shows real rendering progress.
+- **Format and size:** **MP4 (H.264)** where the browser can encode it, otherwise **WebM (VP9/VP8)**. 1920×1080 where the GPU and memory allow, otherwise 1280×720.
+- **Older browsers:** without WebCodecs, the clip is recorded in real time with MediaRecorder instead.
+- **Code:** `src/export/turntable.js`. The encoder library ([Mediabunny](https://mediabunny.dev)) is only downloaded when you make a video.
+
+### Export all variants
+**Configure → Export → Export all variants** renders every combination of case, dial and strap as a square PNG: 4 × 7 × (7 leather + 7 rubber + 1 bracelet) = **420 images**.
+
+- **Sizes:** 800, 1200 or 2000 px, defaulting to 800 on phones.
+- **Contents of the ZIP:**
+  - one PNG per combination, with descriptive file names, e.g. `001_polished-steel_midnight-blue-dial_black-leather-strap.png`
+  - a `variants.csv` listing the case, dial and strap of each file
+- **Memory:** the ZIP is streamed, so the images aren't all held in memory at once.
+- **Progress and Cancel:** a progress bar with time remaining and a **Cancel** button. Cancelling discards the partial export and restores your configuration.
+- **Background tabs:** the export keeps working if the tab is in the background, though keeping it visible is faster.
+- **Code:** `src/export/batch.js`. Adding options in `src/config/options.js` adds them to the export automatically.
+
+### Banner generator
+The **Banners** tab, next to Configure, makes marketing images from the current watch.
+
+- **Inputs:** product name, tagline, price, an optional logo (a transparent PNG or SVG works best) and a light or dark style.
+- **The watch:** a transparent, high-resolution render from the 3D view's current angle. Rotate the watch, then press **Update from 3D view**.
+- **Formats:** each has its own composition, and long text shrinks or wraps to fit.
+
+  | Format | Size | Layout |
+  | --- | --- | --- |
+  | 1:1 Square | 1080×1080 | Logo, large watch, then centred name, tagline and price |
+  | 4:5 Portrait | 1080×1350 | Logo, name and tagline on top, watch in the middle, price at the bottom |
+  | 9:16 Story | 1080×1920 | Same order, kept inside the area Stories/Reels don't cover with their own UI |
+  | 16:9 Landscape | 1920×1080 | Text column on the left, watch large on the right |
+
+- **Type hierarchy:** a serif display name, then the price in an outlined pill, then a lighter tagline.
+- **Downloads:** each preview has its own PNG link, and **Download banners (ZIP)** saves all four.
+- **Remembered:** your text and logo are kept in this browser.
+- **Code:** `src/export/banners.js`. The sizes, colours and spacing are at the top of the file.
 
 ## The current model
 
@@ -271,4 +324,6 @@ Remember to commit `public/models/watch.glb` so it's deployed too. Keep the file
 | The model is tiny or huge | Make sure the case objects are named `case…`, so auto-scale can measure them, or set `MODEL_SCALE` to a number. |
 | Hands spin the wrong way, around the wrong axis, or show the wrong time | Check `HAND_AXIS` (the direction the dial faces) and `TWELVE_DIRECTION` in `src/config/model.js`, and that the `dial` objects are mapped, because hands turn around the dial's centre. |
 | The dial print disappears under the glass | Make sure the print isn't a *transparent (alpha blend)* material. Use **Alpha Clip** in Blender instead: glass only shows opaque objects behind it. |
+| The video is WebM, not MP4 | Your browser can't encode H.264 (e.g. Firefox, or Chromium builds without proprietary codecs). WebM plays in all modern browsers and VLC, or convert it with any video tool. |
+| "Export all variants" is slow | Choose a smaller size, keep the tab visible, and close other heavy tabs. Rendering is limited by the GPU. |
 | A blank screen on a very old device | The configurator needs WebGL 2, which every current browser supports. |

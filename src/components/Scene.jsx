@@ -1,18 +1,18 @@
-import { Suspense, useCallback, useEffect, useImperativeHandle, useState } from 'react'
-import { Canvas, useThree } from '@react-three/fiber'
+import { Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { ContactShadows, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import Studio from './Studio'
 import Watch from './Watch'
 import { downloadImage } from '../utils/downloadImage'
-
-const TARGET = new THREE.Vector3(0, -0.1, -0.7)
-// Default 3/4 product view (direction from the target, before distance is applied)
-const VIEW_DIR = new THREE.Vector3(0.42, 0.16, 1).normalize()
+import { TARGET, VIEW_DIR, beginExport, cropToContent, defaultDistance, renderToCanvas } from '../export/capture'
+import { recordTurntable } from '../export/turntable'
+import { exportVariants } from '../export/batch'
 
 /**
- * The 3D viewport. `apiRef` receives { downloadImage(), resetView() }
- * so the side panel can trigger them.
+ * The 3D viewport. `apiRef` receives the export/view functions
+ * (downloadImage, resetView, recordTurntable, exportVariants, captureWatch)
+ * so the UI outside the canvas can trigger them.
  */
 export default function Scene({ config, apiRef, ...watchProps }) {
   // `n` re-renders the (render-once) floor shadow whenever the watch changes.
@@ -67,17 +67,23 @@ export default function Scene({ config, apiRef, ...watchProps }) {
   )
 }
 
-/** Frames the watch for the screen shape and exposes download / reset to the UI. */
+/** Frames the watch for the screen shape and exposes view + export functions to the UI. */
 function ViewApi({ apiRef }) {
   const gl = useThree((s) => s.gl)
   const scene = useThree((s) => s.scene)
   const camera = useThree((s) => s.camera)
   const controls = useThree((s) => s.controls)
+  const advance = useThree((s) => s.advance)
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height))
+
+  // A per-frame camera function used while recording the 360° video. It runs
+  // after OrbitControls and before the frame is drawn.
+  const driver = useRef(null)
+  useFrame(() => driver.current?.(performance.now()))
 
   const frame = useCallback(() => {
     // Narrow (portrait) screens need the camera further back to fit the watch.
-    const distance = aspect < 1 ? 10 / Math.max(0.5, aspect) ** 0.8 : 10.5
+    const distance = defaultDistance(aspect)
     camera.position.copy(TARGET).addScaledVector(VIEW_DIR, distance)
     camera.lookAt(TARGET)
     if (controls) {
@@ -93,11 +99,25 @@ function ViewApi({ apiRef }) {
 
   useImperativeHandle(
     apiRef,
-    () => ({
-      downloadImage: () => downloadImage({ gl, scene, camera }),
-      resetView: frame,
-    }),
-    [gl, scene, camera, frame],
+    () => {
+      const three = { gl, scene, camera, controls, advance }
+      return {
+        downloadImage: () => downloadImage(three),
+        resetView: frame,
+        recordTurntable: (opts) => recordTurntable(three, (fn) => (driver.current = fn), opts),
+        exportVariants: (applyConfig, opts) => exportVariants(three, applyConfig, opts),
+        /** Transparent, tightly cropped render of the watch from the current angle (for banners). */
+        captureWatch: (size = 1600) => {
+          const restore = beginExport(three, { width: size, height: size, view: 'current-angle' })
+          try {
+            return cropToContent(renderToCanvas(three, { backdrop: 'none' }))
+          } finally {
+            restore()
+          }
+        },
+      }
+    },
+    [gl, scene, camera, controls, advance, frame],
   )
   return null
 }
