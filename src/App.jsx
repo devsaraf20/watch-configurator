@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useProgress } from '@react-three/drei'
 import Scene from './components/Scene'
 import ConfigPanel from './components/ConfigPanel'
+import ErrorBoundary from './components/ErrorBoundary'
 import {
   CASE_MATERIALS,
   DEFAULT_CONFIG,
@@ -60,8 +61,10 @@ export default function App() {
   return (
     <div className="app">
       <main className="viewer" onPointerDown={() => setInteracted(true)}>
-        <Scene config={config} apiRef={api} />
-        <Loader />
+        <ErrorBoundary name="3D view" fallback={(error) => <ViewerError error={error} />}>
+          <Scene config={config} apiRef={api} />
+          <Loader />
+        </ErrorBoundary>
         <button
           type="button"
           className="icon-btn viewer-reset"
@@ -100,6 +103,33 @@ function Loader() {
     <div className="loader" role="status" aria-live="polite">
       <div className="loader-bar" style={{ transform: `scaleX(${progress / 100})` }} />
       <span className="loader-text">Loading model… {Math.round(progress)}%</span>
+    </div>
+  )
+}
+
+/** Shown in place of the 3D view when it can't start, so the page never goes blank. */
+function ViewerError({ error }) {
+  const message = String(error?.message ?? error)
+  const noWebGL = /webgl/i.test(message)
+  return (
+    <div className="viewer-error" role="alert">
+      <h2>3D preview unavailable</h2>
+      {noWebGL ? (
+        <>
+          <p>
+            Your browser couldn&apos;t start WebGL, which the 3D view needs. This usually means
+            graphics acceleration is turned off.
+          </p>
+          <p>
+            In Chrome or Edge, open <strong>Settings → System</strong>, turn on{' '}
+            <strong>Use graphics acceleration when available</strong>, then relaunch the browser.
+            The options panel still works.
+          </p>
+        </>
+      ) : (
+        <p>Something went wrong while loading the 3D view. Try reloading the page.</p>
+      )}
+      <code>{message}</code>
     </div>
   )
 }

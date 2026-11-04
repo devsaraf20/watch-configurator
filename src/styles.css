@@ -147,6 +147,38 @@ button:focus-visible {
   color: var(--ink-2);
 }
 
+.viewer-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 4px;
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 24px;
+  color: var(--ink-2);
+}
+.viewer:has(.viewer-error) :is(.hint, .viewer-reset) {
+  display: none;
+}
+.viewer-error h2 {
+  margin: 0 0 6px;
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 28px;
+  color: var(--ink);
+}
+.viewer-error p {
+  margin: 0 0 8px;
+}
+.viewer-error code {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+  word-break: break-word;
+}
+
 /* ───────────────────────── Panel ───────────────────────── */
 .panel {
   display: flex;
