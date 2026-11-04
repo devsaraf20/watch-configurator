@@ -14,9 +14,10 @@ const VIEW_DIR = new THREE.Vector3(0.42, 0.16, 1).normalize()
  * The 3D viewport. `apiRef` receives { downloadImage(), resetView() }
  * so the side panel can trigger them.
  */
-export default function Scene({ config, apiRef }) {
-  const [floorY, setFloorY] = useState(-2)
-  const onBounds = useCallback((box) => setFloorY(box.min.y - 0.02), [])
+export default function Scene({ config, apiRef, ...watchProps }) {
+  // `n` re-renders the (render-once) floor shadow whenever the watch changes.
+  const [floor, setFloor] = useState({ y: -2, n: 0 })
+  const onBounds = useCallback((box) => setFloor((f) => ({ y: box.min.y - 0.02, n: f.n + 1 })), [])
 
   return (
     <Canvas
@@ -32,15 +33,15 @@ export default function Scene({ config, apiRef }) {
     >
       <Suspense fallback={null}>
         <Studio />
-        <Watch config={config} onBounds={onBounds} />
+        <Watch config={config} onBounds={onBounds} {...watchProps} />
       </Suspense>
 
       {/* Rendered once (not every frame) — a big saving on phones. It re-renders
           when the watch reports its size, i.e. once the model has loaded. */}
       <ContactShadows
-        key={floorY}
+        key={floor.n}
         frames={1}
-        position={[0, floorY, 0]}
+        position={[0, floor.y, 0]}
         scale={12}
         far={4}
         blur={2.6}
