@@ -2,25 +2,23 @@
  * ─────────────────────────────────────────────────────────────
  *  YOUR 3D MODEL
  * ─────────────────────────────────────────────────────────────
- * Leave MODEL_URL as null to show the built-in placeholder watch.
+ * MODEL_URL points at the GLB in /public. Set it to null to go back to
+ * the built-in placeholder watch. It can also be overridden with the
+ * environment variable VITE_MODEL_URL (e.g. in Vercel).
  *
- * To use your own Blender model:
- *   1. Export it as GLB (File → Export → glTF 2.0, format "glTF Binary").
- *   2. Save it as  public/models/watch.glb
- *   3. Set MODEL_URL below to '/models/watch.glb'
- *      (or set the environment variable VITE_MODEL_URL, e.g. in Vercel).
- *
- * See README.md → "Using your own Blender model" for the naming rules.
+ * public/models/watch.glb is an optimised copy of the original Blender
+ * export (meshopt-compressed, unused UVs removed: 2.4 MB → 0.4 MB) —
+ * see README → "Updating the model" for the one-line command.
  */
-export const MODEL_URL = import.meta.env.VITE_MODEL_URL || null
+export const MODEL_URL = import.meta.env.VITE_MODEL_URL || '/models/watch.glb'
 
 /**
- * Rotation (radians, [x, y, z]) applied to your model so the dial faces
- * the camera. The default assumes you modelled the watch the "Blender way":
- * lying flat with the dial facing up (+Z) and 12 o'clock pointing to +Y.
- * If your model already stands upright facing -Y in Blender, use [0, 0, 0].
+ * Rotation (radians, [x, y, z]) applied so the dial faces the camera.
+ * This model is already exported upright with the dial facing +Z and
+ * 12 o'clock at +Y, so no rotation is needed.
+ * (A watch modelled lying flat, dial up in Blender, would need [Math.PI / 2, 0, 0].)
  */
-export const MODEL_ROTATION = [Math.PI / 2, 0, 0]
+export const MODEL_ROTATION = [0, 0, 0]
 
 /**
  * 'auto' scales the model so the case is the same size as the placeholder,
@@ -29,14 +27,67 @@ export const MODEL_ROTATION = [Math.PI / 2, 0, 0]
 export const MODEL_SCALE = 'auto'
 
 /**
- * Which part of the model each Blender object belongs to.
+ * Explicit object → part mapping for the current model.
+ *
+ * The objects in this file still have their default modelling names
+ * (pCube8, polySurface11…), so they are mapped here by hand. Names are
+ * compared ignoring case and punctuation, so 'pCube8.001' also matches
+ * 'pCube8001' (the glTF loader strips the dots).
+ *
+ * Parts: case, dial, strap, hands, glass, buckle (follows the case),
+ * markers (follow the hands). Anything not listed here and not matching
+ * PART_RULES below keeps the material it was exported with.
+ */
+export const PART_OVERRIDES = {
+  // Case
+  'pCylinder1.001': 'case', // front case / bezel
+  'pCylinder4.001': 'case', // case back
+  'pCylinder5.001': 'case', // crown
+  'polySurface11.001': 'case', // lug
+  'polySurface12.001': 'case', // lug
+  'polySurface13.001': 'case', // lug
+  'polySurface14.001': 'case', // lug
+  'polySurface5.001': 'case', // spring bar (top)
+  'polySurface6.001': 'case', // spring bar (bottom)
+
+  // Dial
+  'pCylinder2.001': 'dial', // outer dial ring (outer ball track)
+  'pCylinder3.001': 'dial', // centre disc
+
+  // Hour markers (12 indices; polySurface15 is the triangle at 12)
+  'polySurface15.001': 'markers',
+  'polySurface16.001': 'markers',
+  'polySurface17.001': 'markers',
+  'polySurface18.001': 'markers',
+  'polySurface19.001': 'markers',
+  'polySurface20.001': 'markers',
+  'polySurface21.001': 'markers',
+  'polySurface22.001': 'markers',
+  'polySurface23.001': 'markers',
+  'polySurface24.001': 'markers',
+  'polySurface25.001': 'markers',
+  'polySurface26.001': 'markers',
+
+  // Hands — this watch tells the time with two ball bearings
+  pSphere1: 'hands', // inner ball → hours
+  pSphere2: 'hands', // outer ball → minutes
+
+  // Strap
+  'pCube8.001': 'strap', // lower strap
+  'pPlane2.001': 'strap', // upper strap
+
+  // Buckle
+  'pCube12.001': 'buckle', // buckle frame
+  'pCube13.001': 'buckle', // buckle prong
+}
+
+/**
+ * Name-based rules for any object not listed in PART_OVERRIDES.
  *
  * An object belongs to a part when its name (or the name of any parent
- * object/collection-empty above it, or its material name) STARTS WITH one
- * of the keywords below. Matching ignores upper/lower case, so "Case",
- * "case_bezel", "Case.001" and "CASE-back" all count as the case.
- *
- * The first matching rule wins, so more specific parts come first.
+ * object/empty above it, or its material name) STARTS WITH one of the
+ * keywords below, ignoring case — so "Case", "case_bezel", "Case.001"
+ * all count as the case. The first matching rule wins.
  */
 export const PART_RULES = [
   // Optional extras — these follow the colour/material of another part.
@@ -51,18 +102,21 @@ export const PART_RULES = [
 ]
 
 /**
- * Optional: if your hands are separate objects with these exact names,
- * they will tick like a real watch. Each hand must be modelled pointing
- * at 12 o'clock with its origin at the centre of the dial.
+ * Objects that tell the time. They turn around the centre of the dial, and
+ * their resting position is measured automatically, so they can be exported
+ * pointing anywhere. Use null for a hand the model doesn't have.
  */
 export const HAND_NAMES = {
-  hour: 'hand_hour',
-  minute: 'hand_minute',
-  second: 'hand_second',
+  hour: 'pSphere1',
+  minute: 'pSphere2',
+  second: null,
 }
 
 /**
- * Axis the hands rotate around, in the model's own (glTF) coordinates.
- * For a watch modelled lying flat face-up in Blender this is 'y'.
+ * Direction the dial faces and direction of 12 o'clock, in the model's own
+ * (glTF) coordinates. Hands turn clockwise around HAND_AXIS.
+ * This model: dial faces +Z, 12 o'clock is +Y.
+ * (A watch modelled lying flat, dial up in Blender: HAND_AXIS 'y', TWELVE_DIRECTION '-z'.)
  */
-export const HAND_AXIS = 'y'
+export const HAND_AXIS = 'z'
+export const TWELVE_DIRECTION = 'y'

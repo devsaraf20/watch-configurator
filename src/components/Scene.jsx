@@ -35,7 +35,11 @@ export default function Scene({ config, apiRef }) {
         <Watch config={config} onBounds={onBounds} />
       </Suspense>
 
+      {/* Rendered once (not every frame) — a big saving on phones. It re-renders
+          when the watch reports its size, i.e. once the model has loaded. */}
       <ContactShadows
+        key={floorY}
+        frames={1}
         position={[0, floorY, 0]}
         scale={12}
         far={4}
