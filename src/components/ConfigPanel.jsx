@@ -11,7 +11,7 @@ const PRODUCT_NAME = 'Signature 40'
 const PRODUCT_SUBTITLE = '40 mm automatic · sapphire crystal'
 
 /** The side panel (bottom sheet on mobile) with every option. */
-export default function ConfigPanel({ config, onChange, onDownload, downloading }) {
+export default function ConfigPanel({ config, onChange, onDownload, downloading, modelSection }) {
   const r = resolveConfig(config)
   const set = (key) => (value) => onChange({ ...config, [key]: value })
   const strapIsMetal = r.strapMaterial.matchesCase
@@ -25,6 +25,7 @@ export default function ConfigPanel({ config, onChange, onDownload, downloading 
       </header>
 
       <div className="panel-body">
+        {modelSection}
         <Section label="Case" value={r.caseMaterial.label}>
           <div className="tiles" role="radiogroup" aria-label="Case material">
             {CASE_MATERIALS.map((m) => (

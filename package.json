@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "optimize-model": "node scripts/optimize-model.mjs"
+    "optimize-model": "node scripts/optimize-model.mjs",
+    "test:detection": "node scripts/test-detection.mjs"
   },
   "engines": {
     "node": ">=20.19"

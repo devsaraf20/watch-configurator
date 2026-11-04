@@ -6,6 +6,14 @@
  * @param {object} three  { gl, scene, camera } from React Three Fiber
  */
 export async function downloadImage({ gl, scene, camera }, { filename = 'my-watch.png', scale = 2 } = {}) {
+  // Hide helpers such as the part highlight while capturing.
+  const hidden = []
+  scene.traverse((o) => {
+    if (o.userData.noCapture && o.visible) {
+      o.visible = false
+      hidden.push(o)
+    }
+  })
   const prevRatio = gl.getPixelRatio()
   // Render at (at least) 2× for a crisp image, capped to keep mobile GPUs happy.
   const ratio = Math.min(Math.max(prevRatio, scale), 3)
@@ -30,6 +38,7 @@ export async function downloadImage({ gl, scene, camera }, { filename = 'my-watc
   ctx.drawImage(src, 0, 0)
 
   gl.setPixelRatio(prevRatio)
+  hidden.forEach((o) => (o.visible = true))
   gl.render(scene, camera)
 
   const blob = await new Promise((resolve) => out.toBlob(resolve, 'image/png'))

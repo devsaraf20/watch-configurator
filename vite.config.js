@@ -9,7 +9,9 @@ export default defineConfig({
       output: {
         // Libraries change rarely: keep them in their own long-cacheable chunk.
         manualChunks(id) {
-          if (id.includes('node_modules')) return 'vendor'
+          // three/examples (glTF/Draco loaders) is only needed for uploads, so it
+          // stays in the on-demand upload chunk instead.
+          if (id.includes('node_modules') && !id.includes('three/examples')) return 'vendor'
         },
       },
     },

@@ -8,6 +8,7 @@ A web-based 3D watch configurator built with **React**, **Vite**, **Three.js** a
 - **Download image** saves a high-resolution PNG of the current view
 - Minimal, premium UI: side panel on desktop, bottom sheet on mobile
 - Every build gets a shareable URL (e.g. `/?case=gold&dial=onyx&strap=metal`)
+- **Bring your own model:** visitors can drop any watch `.glb` into the page. Parts are detected automatically and can be checked and corrected, with no code changes. See [below](#bring-your-own-model-in-the-browser).
 - Shows your watch model (`public/models/watch.glb`). A built-in placeholder made from basic shapes is used when no model is set.
 
 ---
@@ -32,6 +33,7 @@ Open the URL it prints (usually http://localhost:5173).
 | `npm run build`   | Production build into `dist/`                   |
 | `npm run preview` | Serve the production build locally to check it  |
 | `npm run optimize-model -- <file.glb>` | Compress a new Blender export into `public/models/watch.glb` |
+| `npm run test:detection` | Check the automatic part detection against the demo watch in 4 orientations |
 
 ---
 
@@ -57,10 +59,19 @@ watch-configurator/
     ├── components/
     │   ├── Scene.jsx           3D canvas, camera, orbit controls, floor shadow
     │   ├── Studio.jsx          Studio lighting / reflections (virtual softboxes)
-    │   ├── Watch.jsx           Picks placeholder or your GLB
+    │   ├── Watch.jsx           Picks the uploaded model, your demo GLB or the placeholder
     │   ├── PlaceholderWatch.jsx  The built-in watch made of basic shapes
     │   ├── GLBWatch.jsx        Loads your GLB and connects its parts by name
     │   └── ConfigPanel.jsx     The side panel UI
+    ├── byom/                   "Bring your own model" (in-browser uploads)
+    │   ├── analyze.js          Orientation + part detection (names + geometry), merge warnings
+    │   ├── loadModel.js        Reads and parses the file in the browser (loaded on demand)
+    │   ├── useCustomModel.js   Upload state: roles, orientation fix, saving
+    │   ├── storage.js          Remembers mappings in localStorage (per file name)
+    │   ├── UploadedWatch.jsx   Renders the upload with live materials + highlight/picking
+    │   ├── ModelSection.jsx    Drop area / file card in the panel
+    │   ├── PartsPanel.jsx      The "Check your parts" step
+    │   └── roles.js            The roles a mesh can have
     ├── materials/
     │   ├── useWatchMaterials.js  One material per part; animates changes
     │   └── textures.js         Generated leather grain, bracelet links, sunburst dial
@@ -73,6 +84,27 @@ watch-configurator/
 The two files marked ★ are the ones you'll most likely edit.
 
 ---
+
+## Bring your own model (in the browser)
+
+Anyone can try their own watch without touching the code:
+
+1. **Upload:** click **Upload model** in the panel, or drag a `.glb` file anywhere onto the page. A self-contained `.gltf` also works. The file is opened **in the browser only** and never sent to a server. Files over 15 MB show a warning, because they may be slow on phones, and files over 300 MB are refused.
+2. **Automatic detection:** every mesh gets a role: case, crown, dial, hands, hour markers, glass, strap/bracelet, buckle, or *Ignore* (keeps its own material). Detection uses:
+   - **names:** object, material and parent names (`dial`, `strap`, `bezel`, `crystal`, …)
+   - **geometry:** size, position, thickness and shape. For example, the largest round part is the case. A solid flat disc under the hands is the dial. A see-through or front-most disc is the glass. Twelve similar parts around the dial are markers. Flat parts reaching out from the centre are hands. A small part on the side is the crown. Long parts outside the head are the strap.
+   - Each guess shows a **High / Medium / Low** confidence and the reason behind it.
+3. **Check your parts:** this step opens after each upload and lists every mesh.
+   - Click a row, or click the mesh in the 3D view, to highlight it in blue. Click again in 3D to reach what's behind it, such as the dial under the glass.
+   - Choose a role from the dropdown. The watch updates live with the current case finish, dial colour and strap.
+4. **Orientation:** the model is automatically turned so the dial faces you with 12 o'clock at the top, then centred and scaled to the demo size. The dial direction comes from the head's flat discs. 12 o'clock comes from the strap direction and the crown at 3 o'clock. If it's still wrong, use **Rotate 90°**, **Tilt 90°**, **Flip** or **Auto**.
+5. **Merged meshes:** if one mesh contains pieces that look like different parts (for example the dial and the hands), you get a warning explaining how to split it in Blender (<kbd>Tab</kbd> → hover → <kbd>L</kbd> → <kbd>P</kbd> → *Selection*).
+6. **Remembered:** roles and the orientation fix are saved in the browser's `localStorage`, keyed by file name. Uploading the same file again restores them. **Start over** forgets them.
+7. **Reset to demo** returns to the built-in watch.
+
+Uploaded models don't animate their hands: hands are found by shape, but not which is which. Generated textures (leather grain, links, sunburst) are also only used on the placeholder, because they depend on its UVs. Draco- and meshopt-compressed files are supported, and the Draco decoder is bundled. KTX2 textures aren't supported.
+
+**The demo watch** is whatever `MODEL_URL` in `src/config/model.js` points to; currently your `watch.glb`. Set it to `null` to make the procedural placeholder the demo instead.
 
 ## The current model
 
