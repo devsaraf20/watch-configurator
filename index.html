@@ -6,6 +6,9 @@
     <meta name="theme-color" content="#f3f2ef" />
     <meta name="description" content="Configure your watch in 3D — choose the case, dial and strap." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Start downloading the 3D model in parallel with the app code.
+         Keep in sync with MODEL_URL in src/config/model.js (remove if you use the placeholder). -->
+    <link rel="preload" href="/models/watch.glb" as="fetch" type="model/gltf-binary" crossorigin="anonymous" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

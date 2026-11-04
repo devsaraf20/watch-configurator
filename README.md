@@ -8,7 +8,7 @@ A web-based 3D watch configurator built with **React**, **Vite**, **Three.js** a
 - **Download image** saves a high-resolution PNG of the current view
 - Minimal, premium UI: side panel on desktop, bottom sheet on mobile
 - Every build gets a shareable URL (e.g. `/?case=gold&dial=onyx&strap=metal`)
-- Comes with a placeholder watch made from basic shapes. You can swap it for your own Blender model by changing one line.
+- Shows your watch model (`public/models/watch.glb`). A built-in placeholder made from basic shapes is used when no model is set.
 
 ---
 
@@ -31,6 +31,7 @@ Open the URL it prints (usually http://localhost:5173).
 | `npm run dev`     | Development server with instant reload          |
 | `npm run build`   | Production build into `dist/`                   |
 | `npm run preview` | Serve the production build locally to check it  |
+| `npm run optimize-model -- <file.glb>` | Compress a new Blender export into `public/models/watch.glb` |
 
 ---
 
@@ -43,14 +44,16 @@ watch-configurator/
 ├── vercel.json                 Vercel deployment settings
 ├── public/
 │   ├── favicon.svg
-│   └── models/                 ← put your watch.glb here
+│   └── models/watch.glb        Your watch (optimised, ~0.4 MB)
+├── scripts/
+│   └── optimize-model.mjs      Compresses a Blender export for the web
 └── src/
     ├── main.jsx                Starts React
     ├── App.jsx                 Page layout, share-able URL, download button wiring
     ├── styles.css              All styling (design tokens at the top)
     ├── config/
     │   ├── options.js          ★ Colours & materials shown in the panel: edit to add your own
-    │   └── model.js            ★ Your GLB path + Blender naming rules
+    │   └── model.js            ★ Your GLB path, object → part mapping, hands
     ├── components/
     │   ├── Scene.jsx           3D canvas, camera, orbit controls, floor shadow
     │   ├── Studio.jsx          Studio lighting / reflections (virtual softboxes)
@@ -70,6 +73,35 @@ watch-configurator/
 The two files marked ★ are the ones you'll most likely edit.
 
 ---
+
+## The current model
+
+`public/models/watch.glb` is an optimised copy of your Blender export. It is a ball-bearing watch: two balls travel around tracks on the dial instead of hands. Its objects still have default modelling names (`pCube8`, `polySurface11`, …), so they're mapped to parts explicitly in `PART_OVERRIDES` in `src/config/model.js`:
+
+| Part | Objects |
+| --- | --- |
+| **Case** | `pCylinder1.001` (front case / bezel), `pCylinder4.001` (case back), `pCylinder5.001` (crown), `polySurface11–14.001` (lugs), `polySurface5.001` / `polySurface6.001` (spring bars) |
+| **Dial** | `pCylinder2.001` (outer ring), `pCylinder3.001` (centre disc) |
+| **Hands** | `pSphere1` (inner ball → hours), `pSphere2` (outer ball → minutes) |
+| **Strap** | `pCube8.001` (lower strap), `pPlane2.001` (upper strap) |
+| **Glass** | *none: the model has no crystal* |
+| *Markers* (follow the hands) | `polySurface15–26.001` (12 indices; 15 is the triangle at 12) |
+| *Buckle* (follows the case) | `pCube12.001` (frame), `pCube13.001` (prong) |
+
+The export also contained four empty objects with no geometry (`Watch`, `pCube15`, `pCube29`, `polySurface7`). They were removed during optimisation.
+
+The model is exported upright (dial facing +Z, 12 o'clock at +Y), so `MODEL_ROTATION` is `[0, 0, 0]`. It is scaled automatically to the same size as the placeholder.
+
+### Updating the model
+
+1. Export from Blender as **glTF Binary (.glb)**.
+2. Run the optimiser. It keeps object names and makes the file about 6× smaller (2.4 MB → 0.4 MB for the current watch):
+
+```bash
+npm run optimize-model -- ~/Downloads/my-watch.glb
+```
+
+3. If you added, renamed or removed objects, update `PART_OVERRIDES` in `src/config/model.js`. Alternatively, rename them in Blender using the keywords below and they'll be picked up automatically.
 
 ## Using your own Blender model
 
@@ -119,13 +151,17 @@ watch                (Empty, optional)
 
 If the hands are separate objects named exactly **`hand_hour`**, **`hand_minute`** and **`hand_second`**, they'll be posed at 10:10 and the second hand will sweep in real time, just like the placeholder. For this to work:
 
-- model each hand **pointing at 12 o'clock**
-- set each hand's **origin at the centre of the dial** (Object → Set Origin → Origin to 3D Cursor, with the cursor at the dial centre)
+- hands turn around the **centre of the dial** (measured from the `dial` objects), so their origin doesn't matter
+- they can be exported **pointing anywhere**: their resting angle is measured automatically
+- other names work too: list them in `HAND_NAMES` in `src/config/model.js` (as done for this model's ball bearings)
 
 ### 3. Orientation, scale and transforms
 
-- Model the watch **lying flat with the dial facing up (+Z)** and **12 o'clock pointing to +Y**, which is how most watches are modelled in Blender. The configurator stands it upright facing the camera.
-  If your model is already upright facing the front view (-Y), set `MODEL_ROTATION = [0, 0, 0]` in `src/config/model.js`.
+- The current settings expect the watch **upright, with the dial facing the Blender front view (-Y)** and 12 o'clock up (+Z), like the current model.
+- If you model it **lying flat with the dial facing up (+Z)**, set these in `src/config/model.js`:
+  - `MODEL_ROTATION = [Math.PI / 2, 0, 0]`
+  - `HAND_AXIS = 'y'`
+  - `TWELVE_DIRECTION = '-z'`
 - **Any units are fine.** The model is automatically scaled and centred on the case (`MODEL_SCALE = 'auto'`).
 - Apply transforms before exporting (**Ctrl+A → All Transforms**) so scale and rotation are clean. Exception: for the hands, keep the origin at the dial centre as described above.
 
@@ -140,22 +176,11 @@ The configurator replaces the **colour, metalness and roughness** of the configu
 3. Under **Include**, tick *Visible Objects* (or *Selected Objects*)
 4. Under **Transform**, keep **+Y Up** ticked (the default)
 5. Under **Data → Mesh**, tick *Apply Modifiers*
-6. Optional: under **Data → Compression**, Draco compression makes the file much smaller. It's supported automatically (the decoder is loaded from Google's CDN).
-7. Save it as **`public/models/watch.glb`**
+6. Run `npm run optimize-model -- <your-file.glb>`. It writes a compressed copy to **`public/models/watch.glb`**. (Draco-compressed exports also load, but the optimiser's meshopt compression is smaller and needs no extra download.)
 
 ### 6. Switch the configurator to your model
 
-Open `src/config/model.js` and change:
-
-```js
-export const MODEL_URL = import.meta.env.VITE_MODEL_URL || null
-```
-
-to:
-
-```js
-export const MODEL_URL = import.meta.env.VITE_MODEL_URL || '/models/watch.glb'
-```
+`MODEL_URL` in `src/config/model.js` already points at `/models/watch.glb`. To go back to the placeholder, set it to `null` and remove the `<link rel="preload">` line from `index.html`.
 
 Restart `npm run dev`. To check the result, open the browser's developer console. In development the configurator logs a collapsible group, **"How your model's objects were matched to parts"**, listing which object went to which part and which were left unmatched.
 
@@ -201,7 +226,7 @@ npm i -g vercel
 vercel --prod
 ```
 
-Remember to commit `public/models/watch.glb` so it's deployed too. Keep the file reasonably small (ideally under ~10 MB) by using Draco compression and modest texture sizes, so it loads quickly on phones.
+Remember to commit `public/models/watch.glb` so it's deployed too. Keep the file reasonably small (ideally under ~10 MB) by running `npm run optimize-model` and keeping textures modest, so it loads quickly on phones.
 
 ---
 
@@ -212,6 +237,6 @@ Remember to commit `public/models/watch.glb` so it's deployed too. Keep the file
 | A part doesn't change colour | Check the console's matching report. Rename the object (or its parent) so it starts with a keyword from the table above. |
 | The model appears sideways or upside down | Adjust `MODEL_ROTATION` in `src/config/model.js` (try `[0, 0, 0]` or `[-Math.PI / 2, 0, 0]`). |
 | The model is tiny or huge | Make sure the case objects are named `case…`, so auto-scale can measure them, or set `MODEL_SCALE` to a number. |
-| Hands spin the wrong way or around the wrong axis | Change `HAND_AXIS` in `src/config/model.js` (`'y'`, `'-y'`, `'z'`, `'-z'`…) and check each hand's origin is at the dial centre. |
+| Hands spin the wrong way, around the wrong axis, or show the wrong time | Check `HAND_AXIS` (the direction the dial faces) and `TWELVE_DIRECTION` in `src/config/model.js`, and that the `dial` objects are mapped, because hands turn around the dial's centre. |
 | The dial print disappears under the glass | Make sure the print isn't a *transparent (alpha blend)* material. Use **Alpha Clip** in Blender instead: glass only shows opaque objects behind it. |
 | A blank screen on a very old device | The configurator needs WebGL 2, which every current browser supports. |

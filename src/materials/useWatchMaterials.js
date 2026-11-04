@@ -81,7 +81,8 @@ export function useWatchMaterials(config, { procedural = true } = {}) {
       strapTarget = {
         color: new THREE.Color(caseMaterial.color),
         metalness: caseMaterial.metalness,
-        roughness: procedural ? (isMatte ? 0.6 : 0.34) : caseMaterial.roughness + 0.08,
+        // brushed bracelet vs. polished case, so the two read as different finishes
+        roughness: procedural ? (isMatte ? 0.6 : 0.34) : Math.min(1, caseMaterial.roughness + 0.2),
         sheen: 0,
       }
       if (procedural) {
@@ -123,7 +124,7 @@ export function useWatchMaterials(config, { procedural = true } = {}) {
     const dialTarget = {
       color: dialC,
       // light dials read better slightly less metallic
-      metalness: dialHsl.l > 0.45 ? 0.15 : 0.35,
+      metalness: dialHsl.l > 0.45 ? 0.05 : 0.35,
       roughness: 0.36,
     }
 
