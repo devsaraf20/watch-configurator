@@ -1,8 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useProgress } from '@react-three/drei'
 import Scene from './components/Scene'
-import ConfigPanel from './components/ConfigPanel'
+import ConfigPanel, { PRODUCT_NAME } from './components/ConfigPanel'
 import ErrorBoundary from './components/ErrorBoundary'
+import BannerPanel from './components/BannerPanel'
+import ExportSection from './components/ExportSection'
+import JobOverlay from './components/JobOverlay'
+import { ExportCancelled, downloadBlob, slug } from './export/capture'
+import { setMaterialSnap } from './materials/useWatchMaterials'
 import ModelSection from './byom/ModelSection'
 import PartsPanel from './byom/PartsPanel'
 import { LARGE_FILE_BYTES, formatBytes, useCustomModel } from './byom/useCustomModel'
@@ -12,6 +18,7 @@ import {
   DIAL_COLORS,
   STRAP_COLORS,
   STRAP_MATERIALS,
+  resolveConfig,
 } from './config/options'
 
 const LISTS = {
@@ -40,7 +47,16 @@ function syncUrl(config) {
     strap: config.strapMaterial,
     color: config.strapColor,
   })
-  window.history.replaceState(null, '', `${window.location.pathname}?${params}`)
+  try {
+    window.history.replaceState(null, '', `${window.location.pathname}?${params}`)
+  } catch {
+    // Some browsers throttle very frequent URL updates; the URL is a convenience only.
+  }
+}
+
+const formatEta = (ms) => {
+  const s = Math.max(1, Math.round(ms / 1000))
+  return s < 60 ? `${s} s left` : `${Math.floor(s / 60)} min ${s % 60} s left`
 }
 
 export default function App() {
@@ -52,8 +68,15 @@ export default function App() {
   const [view, setView] = useState('options') // 'options' | 'parts'
   const [selectedId, setSelectedId] = useState(null)
   const [hoverId, setHoverId] = useState(null)
+  const [tab, setTab] = useState('configure') // 'configure' | 'banners'
+  const [job, setJob] = useState(null) // running export: { title, progress, detail, cancel }
+  const [notice, setNotice] = useState(null)
+  const jobRunning = useRef(false)
 
-  useEffect(() => syncUrl(config), [config])
+  // Keep the URL in sync — but not while the batch export flips through hundreds of variants.
+  useEffect(() => {
+    if (!jobRunning.current) syncUrl(config)
+  }, [config])
 
   // A freshly uploaded model opens the "Check your parts" step; leaving
   // the upload (reset / error) goes back to the options.
@@ -65,6 +88,80 @@ export default function App() {
     api.current?.resetView()
   }, [scene])
   const partsOpen = view === 'parts' && custom.status === 'ready'
+
+  /** Run a long export with the progress overlay; handles cancel and errors. */
+  const runJob = async (title, work) => {
+    const controller = new AbortController()
+    jobRunning.current = true
+    setNotice(null)
+    setJob({
+      title,
+      progress: 0,
+      detail: 'Starting…',
+      cancel: () => {
+        controller.abort()
+        setJob((j) => j && { ...j, cancelling: true })
+      },
+    })
+    try {
+      await work(controller.signal, (patch) => setJob((j) => j && { ...j, ...patch }))
+    } catch (err) {
+      if (!(err instanceof ExportCancelled)) {
+        console.error(`[watch] ${title} failed:`, err)
+        setNotice({ type: 'error', text: err?.message ?? String(err) })
+      }
+    } finally {
+      jobRunning.current = false
+      setJob(null)
+    }
+  }
+
+  const describe = (c) => {
+    const r = resolveConfig(c)
+    return `${slug(r.caseMaterial.label)}_${slug(r.dialColor.label)}-dial_${
+      r.strapMaterial.matchesCase ? 'bracelet' : `${slug(r.strapColor.label)}-${slug(r.strapMaterial.label)}`
+    }`
+  }
+
+  const recordVideo = () =>
+    runJob('Recording 360° video', async (signal, update) => {
+      update({ detail: 'Preparing…' })
+      let last = 0
+      const result = await api.current.recordTurntable({
+        seconds: 6,
+        signal,
+        onProgress: (t) => {
+          const now = performance.now()
+          if (now - last < 100 && t < 1) return // ~10 updates a second is plenty
+          last = now
+          update({ progress: t, detail: `Rendering the turn… ${Math.round(t * 100)}%` })
+        },
+      })
+      update({ progress: 1, detail: 'Saving video…' })
+      downloadBlob(result.blob, `watch-360_${describe(config)}_${result.height}p.${result.ext}`)
+      setNotice({ type: 'info', text: `Saved a ${result.width}×${result.height} ${result.ext.toUpperCase()} video.` })
+    })
+
+  const exportAll = (size) =>
+    runJob('Exporting all variants', async (signal, update) => {
+      const original = config
+      setMaterialSnap(true)
+      try {
+        const zip = await api.current.exportVariants((c) => flushSync(() => setConfig(c)), {
+          size,
+          signal,
+          onProgress: ({ done, total, etaMs }) =>
+            update({ progress: done / total, detail: `${done} of ${total} images · ${formatEta(etaMs)}` }),
+        })
+        update({ progress: 1, detail: 'Saving ZIP…' })
+        downloadBlob(zip, `watch-variants_${size}px.zip`)
+      } finally {
+        setMaterialSnap(false)
+        flushSync(() => setConfig(original))
+      }
+    })
+
+  const captureWatch = useCallback(() => api.current?.captureWatch() ?? null, [])
 
   const handleDownload = async () => {
     if (!api.current) return
@@ -113,7 +210,16 @@ export default function App() {
         <p className={`hint${interacted ? ' hint--hidden' : ''}`}>
           Drag to rotate · Pinch or scroll to zoom
         </p>
+        {notice && (
+          <div className={`toast toast--${notice.type}`} role="status">
+            <span>{notice.text}</span>
+            <button type="button" className="btn-link" onClick={() => setNotice(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
       </main>
+      <JobOverlay job={job} />
       {partsOpen ? (
         <PartsPanel
           custom={custom}
@@ -122,13 +228,18 @@ export default function App() {
           onHover={setHoverId}
           onDone={() => setView('options')}
         />
+      ) : tab === 'banners' ? (
+        <BannerPanel tab={tab} onTab={setTab} captureWatch={captureWatch} defaultName={PRODUCT_NAME} />
       ) : (
         <ConfigPanel
           config={config}
           onChange={setConfig}
           onDownload={handleDownload}
           downloading={downloading}
+          tab={tab}
+          onTab={setTab}
           modelSection={<ModelSection custom={custom} onCheckParts={() => setView('parts')} />}
+          exportSection={<ExportSection onRecordVideo={recordVideo} onExportVariants={exportAll} busy={!!job} />}
         />
       )}
     </div>

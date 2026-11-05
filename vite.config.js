@@ -9,9 +9,10 @@ export default defineConfig({
       output: {
         // Libraries change rarely: keep them in their own long-cacheable chunk.
         manualChunks(id) {
-          // three/examples (glTF/Draco loaders) is only needed for uploads, so it
-          // stays in the on-demand upload chunk instead.
-          if (id.includes('node_modules') && !id.includes('three/examples')) return 'vendor'
+          // Libraries only needed on demand stay in their own lazy chunks:
+          // three/examples (glTF/Draco loaders, for uploads) and mediabunny (video encoding).
+          const lazy = ['three/examples', 'mediabunny']
+          if (id.includes('node_modules') && !lazy.some((l) => id.includes(l))) return 'vendor'
         },
       },
     },

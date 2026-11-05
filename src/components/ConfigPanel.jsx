@@ -5,13 +5,14 @@ import {
   STRAP_MATERIALS,
   resolveConfig,
 } from '../config/options'
+import PanelTabs from './PanelTabs'
 
 // Shown at the top of the panel — rename to your own product.
-const PRODUCT_NAME = 'Signature 40'
+export const PRODUCT_NAME = 'Signature 40'
 const PRODUCT_SUBTITLE = '40 mm automatic · sapphire crystal'
 
 /** The side panel (bottom sheet on mobile) with every option. */
-export default function ConfigPanel({ config, onChange, onDownload, downloading, modelSection }) {
+export default function ConfigPanel({ config, onChange, onDownload, downloading, modelSection, exportSection, tab, onTab }) {
   const r = resolveConfig(config)
   const set = (key) => (value) => onChange({ ...config, [key]: value })
   const strapIsMetal = r.strapMaterial.matchesCase
@@ -19,6 +20,7 @@ export default function ConfigPanel({ config, onChange, onDownload, downloading,
   return (
     <aside className="panel" aria-label="Watch options">
       <header className="panel-header">
+        <PanelTabs tab={tab} onChange={onTab} />
         <p className="eyebrow">Configurator</p>
         <h1 className="title">{PRODUCT_NAME}</h1>
         <p className="subtitle">{PRODUCT_SUBTITLE}</p>
@@ -86,6 +88,7 @@ export default function ConfigPanel({ config, onChange, onDownload, downloading,
             />
           )}
         </Section>
+        {exportSection}
       </div>
 
       <footer className="panel-footer">

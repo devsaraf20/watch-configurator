@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { getCaseMaterial, resolveConfig } from '../config/options'
@@ -8,6 +8,12 @@ import {
   getRubberNormal,
   getSunburstAnisotropy,
 } from './textures'
+
+let snapping = false
+/** While true, option changes apply instantly instead of animating (used by batch export). */
+export function setMaterialSnap(value) {
+  snapping = value
+}
 
 /**
  * One material per watch part. The same material objects live for the whole
@@ -58,7 +64,8 @@ export function useWatchMaterials(config, { procedural = true } = {}) {
 
   // Apply the parts of the configuration that can't be animated (textures,
   // anisotropy…) immediately, and store colour/finish targets for animation.
-  useEffect(() => {
+  // (A layout effect, so exports that switch options synchronously see the new targets.)
+  useLayoutEffect(() => {
     const { caseMaterial, dialColor, strapMaterial, strapColor } = resolveConfig(config)
     const handsSpec = caseMaterial.handsMaterial
       ? getCaseMaterial(caseMaterial.handsMaterial)
@@ -143,7 +150,7 @@ export function useWatchMaterials(config, { procedural = true } = {}) {
   useFrame((_, dt) => {
     const t = targets.current
     if (!t) return
-    const k = first.current ? 1 : 1 - Math.exp(-9 * Math.min(dt, 0.1))
+    const k = first.current || snapping ? 1 : 1 - Math.exp(-9 * Math.min(dt, 0.1))
     first.current = false
     for (const key in t) {
       const m = materials[key]
